@@ -1,0 +1,49 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> select this repo.
+databases:
+  - name: digiquest-db
+    plan: free            # free Postgres EXPIRES after 30 days on Render; use a paid plan for real use
+    databaseName: digiquest
+    user: digiquest
+
+services:
+  - type: web
+    name: digiquest-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: >-
+      alembic upgrade head &&
+      (python -m app.create_admin --skip-if-exists || true) &&
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DATABASE_URL
+        fromDatabase: {name: digiquest-db, property: connectionString}
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: APP_ENV
+        value: production
+      - key: ADMIN_EMAIL        # set in dashboard
+        sync: false
+      - key: ADMIN_NAME
+        sync: false
+      - key: ADMIN_PASSWORD     # set in dashboard; REMOVE it after the first successful deploy
+        sync: false
+
+  - type: web
+    name: digiquest-frontend
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: /api/v1
+      - key: BACKEND_URL
+        fromService: {type: web, name: digiquest-backend, property: hostport}
